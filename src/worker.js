@@ -143,7 +143,8 @@ async function handleCalculateDate(request, env, kvAdminCache) {
     return jsonResponse({ success: false, error: '请求体解析失败' }, 400);
   }
 
-  const { model, tonnage, expected_date, employee_id } = body;
+  const { model, tonnage, expected_date, submitter_id } = body;
+  const employee_id = submitter_id || '';
   if (!model || tonnage === undefined || !expected_date) {
     return jsonResponse({ success: false, error: '缺少必要参数: model, tonnage, expected_date' }, 400);
   }
