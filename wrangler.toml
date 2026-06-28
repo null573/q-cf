@@ -1,0 +1,32 @@
+# Cloudflare Worker configuration - 销售排队系统
+# Deploy: wrangler deploy
+
+name = "q-sys"
+main = "src/worker.js"
+compatibility_date = "2025-06-28"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+
+[[kv_namespaces]]
+binding = "ADMIN_KV"
+id = ""  # Fill after creating KV namespace: wrangler kv:namespace create ADMIN_KV
+
+[vars]
+ACCESS_PASSWORD = "queue2025"
+CLIENT_ID = "da815d1227294457b43413bdc16e3e90"
+OPEN_ID = "9bc172e5338147d8a35c1438ea8d1577"
+ADMIN_EMPLOYEE_ID = "20150465"
+RENDER_SERVICE_ID = "srv-d8l6eet7vvec73evlu7g"
+
+# Secrets (set via wrangler secret put):
+# ACCESS_TOKEN - 默认腾讯文档 token
+# RENDER_API_KEY - Render API Key (optional)
+# GITHUB_TOKEN - GitHub Token (optional)
+
+# Observability
+[observability]
+enabled = true
+head_sampling_rate = 1
