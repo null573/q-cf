@@ -12,7 +12,7 @@ not_found_handling = "single-page-application"
 
 [[kv_namespaces]]
 binding = "ADMIN_KV"
-id = ""  # Fill after creating KV namespace: wrangler kv:namespace create ADMIN_KV
+id = "21f6d201e4ed48d7a8d5da089c71c0ff"
 
 [vars]
 ACCESS_PASSWORD = "queue2025"
