@@ -14,6 +14,7 @@ import {
   handleGetOrders, handleGetOrder, handleCreateOrder,
   handleUpdateOrder, handleDeleteOrder,
   handleClearTempRow, handleCleanupUserTempRows,
+  getNextEmptyRow,
 } from './orders.js';
 import {
   handleAdminStatus, handleAdminValidate, handleAdminUpdate,
@@ -21,7 +22,7 @@ import {
   handleAdminModelConfigs, handleAdminSaveModelConfigs,
 } from './admin.js';
 import {
-  calculateDeliveryDate, refreshCapacityData, MODEL_CONFIG,
+  calculateDeliveryDate, refreshCapacityData, preloadAllCapacityData, MODEL_CONFIG,
 } from './calc-engine.js';
 import { getHeaders, readSheetRange, readSingleCell } from './tencent-api.js';
 
@@ -143,7 +144,7 @@ async function handleCalculateDate(request, env, kvAdminCache) {
     return jsonResponse({ success: false, error: '请求体解析失败' }, 400);
   }
 
-  const { model, tonnage, expected_date, submitter_id } = body;
+  const { model, tonnage, expected_date, submitter_id, use_cache } = body;
   const employee_id = submitter_id || '';
   if (!model || tonnage === undefined || !expected_date) {
     return jsonResponse({ success: false, error: '缺少必要参数: model, tonnage, expected_date' }, 400);
@@ -151,6 +152,21 @@ async function handleCalculateDate(request, env, kvAdminCache) {
 
   const calcCacheKey = `${model}|${tonnage}|${expected_date}`;
   const now = Math.floor(Date.now() / 1000);
+
+  // 如果前端传了 use_cache=true，优先使用缓存结果快速返回
+  if (use_cache && calcResultCache.key === calcCacheKey && (now - calcResultCache.timestamp) < CALC_CACHE_TTL) {
+    try {
+      const actualEmptyRow = await getNextEmptyRow(SHEET_ID, 2, 2, kvAdminCache);
+      return jsonResponse({
+        success: true,
+        calculated_date: calcResultCache.result.date,
+        row_index: actualEmptyRow,
+        message: 'from_cache',
+      });
+    } catch (e) {
+      // 缓存回退失败，继续正常计算
+    }
+  }
 
   if (calcResultCache.key === calcCacheKey && (now - calcResultCache.timestamp) < CALC_CACHE_TTL) {
     const submitterId = employee_id || 'anonymous';
@@ -180,17 +196,22 @@ async function handleCalculateDate(request, env, kvAdminCache) {
   calcResultCache.result = result;
   calcResultCache.timestamp = now;
 
-  const submitterId = employee_id || 'anonymous';
+  // 获取实际空白行号（A列为空的第一行），替代临时行号
   let targetRow;
-  const existing = tempRowTracker[submitterId];
-
-  if (existing && (now - existing.timestamp) < TEMP_ROW_TIMEOUT) {
-    targetRow = existing.row_index;
-    existing.timestamp = now;
-  } else {
-    tempRowSeq += 1;
-    targetRow = nextTempRowBase + tempRowSeq;
-    tempRowTracker[submitterId] = { row_index: targetRow, timestamp: now };
+  try {
+    targetRow = await getNextEmptyRow(SHEET_ID, 2, 2, kvAdminCache);
+  } catch (e) {
+    // 如果获取空白行失败，回退到临时行号
+    const submitterId = employee_id || 'anonymous';
+    const existing = tempRowTracker[submitterId];
+    if (existing && (now - existing.timestamp) < TEMP_ROW_TIMEOUT) {
+      targetRow = existing.row_index;
+      existing.timestamp = now;
+    } else {
+      tempRowSeq += 1;
+      targetRow = nextTempRowBase + tempRowSeq;
+      tempRowTracker[submitterId] = { row_index: targetRow, timestamp: now };
+    }
   }
 
   return jsonResponse({
@@ -213,6 +234,23 @@ async function handleRefreshCapacityData(request, env, kvAdminCache) {
     return jsonResponse({
       success: false,
       error: `刷新失败: ${e.message}`,
+    }, 500);
+  }
+}
+
+async function handleCapacityPreload(request, env, kvAdminCache) {
+  try {
+    const result = await preloadAllCapacityData(kvAdminCache);
+    return jsonResponse({
+      success: true,
+      message: `产能数据预加载完成：${result.loaded}/${result.total} 个型号`,
+      capacity_data: {}, // 前端不需要原始数据，只需要预热后端缓存
+      time: getBeijingTimeStr(),
+    });
+  } catch (e) {
+    return jsonResponse({
+      success: false,
+      error: `预加载失败: ${e.message}`,
     }, 500);
   }
 }
@@ -372,6 +410,10 @@ export default {
 
     if (path === '/api/refresh-capacity-data' && method === 'POST') {
       return handleRefreshCapacityData(request, env, kvAdminCache);
+    }
+
+    if (path === '/api/capacity-preload' && method === 'GET') {
+      return handleCapacityPreload(request, env, kvAdminCache);
     }
 
     if (path === '/api/cache-status' && method === 'GET') {

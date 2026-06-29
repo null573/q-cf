@@ -346,6 +346,30 @@ async function refreshCapacityData(kvAdminCache) {
   } catch (e) {}
 }
 
+// 预加载所有型号的产能数据到内存缓存，加速后续 calculate-date 调用
+async function preloadAllCapacityData(kvAdminCache) {
+  const configs = await loadModelConfigsFromSheet(kvAdminCache);
+  const allConfigs = { ...MODEL_CONFIG, ...configs };
+  const models = Object.keys(allConfigs);
+  let loadedCount = 0;
+  let errorCount = 0;
+
+  for (const model of models) {
+    const config = allConfigs[model];
+    if (!config) continue;
+    const [sheetId, startRow, capacityCol, limitCell, rowCount] = config;
+    try {
+      await getSheetData(sheetId, startRow, capacityCol, limitCell, rowCount, kvAdminCache);
+      loadedCount++;
+    } catch (e) {
+      console.warn(`[preload] Failed for ${model}: ${e.message}`);
+      errorCount++;
+    }
+  }
+
+  return { loaded: loadedCount, errors: errorCount, total: models.length };
+}
+
 export {
   MODEL_CONFIG,
   parseDate,
@@ -356,4 +380,5 @@ export {
   calculateDeliveryDate,
   refreshCapacityData,
   loadModelConfigsFromSheet,
+  preloadAllCapacityData,
 };

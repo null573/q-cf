@@ -584,26 +584,14 @@ async function handleCreateOrder(request, env, kvAdminCache) {
     const queueDate = data.queue_date || '';
     const submitter = data.submitter || '未知用户';
     const submitterId = data.submitter_id || '';
-    let rowIndex = parseInt(data.row_index, 10) || 0;
 
     const remark = `${tonnage}${customer}`;
     const submitTime = getBeijingTimeStr();
 
-    let targetRow = rowIndex;
-    if (targetRow <= 0) {
-      return new Response(JSON.stringify({ success: false, error: '未找到目标行，请先计算可发货日期' }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
+    // 查找"自助排队"表A列为空的第一个空白行
+    const targetRow = await getNextEmptyRow(SHEET_ID, 2, 4, kvAdminCache);
 
-    const tempKey = `${submitterId}`;
-    if (tempRowTracker[tempKey]) {
-      const trackedRow = tempRowTracker[tempKey].row_index;
-      if (trackedRow !== targetRow) {
-        targetRow = trackedRow;
-      }
-    }
-
+    // 确保表格有足够的行，如满则自动创建新行
     await ensureSheetRows(targetRow + 10, kvAdminCache);
 
     const writeIdx = targetRow - 1;
@@ -618,11 +606,16 @@ async function handleCreateOrder(request, env, kvAdminCache) {
       const updated = (result.responses[0] && result.responses[0].updateRangeResponse)
           ? result.responses[0].updateRangeResponse.updatedCells : 0;
       if (updated > 0) {
+        // 清除该用户和该行的临时行跟踪
+        const tempKey = `${submitterId}`;
         if (tempRowTracker[tempKey]) {
           delete tempRowTracker[tempKey];
         }
+        // 清除空白行缓存，因为已占用
+        emptyRowCache.row = 0;
+        emptyRowCache.timestamp = 0;
         clearOrderCaches();
-        return new Response(JSON.stringify({ success: true, message: '订单创建成功' }), {
+        return new Response(JSON.stringify({ success: true, message: '订单创建成功', row_index: targetRow }), {
           headers: { 'Content-Type': 'application/json' }
         });
       }
