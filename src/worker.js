@@ -53,10 +53,22 @@ function isAuthRequired(path) {
   return !AUTH_PUBLIC_ROUTES.includes(path);
 }
 
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Access-Password, X-Employee-Id',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(),
+    },
   });
 }
 
@@ -382,6 +394,11 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+
+    // CORS preflight
+    if (method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders() });
+    }
 
     const kvAdminCache = await loadKvCache(env);
 

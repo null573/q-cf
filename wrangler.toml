@@ -12,7 +12,7 @@ not_found_handling = "single-page-application"
 
 [[kv_namespaces]]
 binding = "ADMIN_KV"
-id = "21f6d201e4ed48d7a8d5da089c71c0ff"
+id = "0c6d51f4c07f48da87c6de41824c19bd"
 
 [vars]
 ACCESS_PASSWORD = "queue2025"
